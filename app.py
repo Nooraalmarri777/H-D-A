@@ -6,13 +6,19 @@ import seaborn as sns
 import plotly.express as px
 
 st.set_page_config(page_title="Health Data Analyzer", layout="wide")
+
 st.title("Health Data Analyzer")
 
-# Sidebar - اختيار وقت التقرير
+# --- Sidebar ---
 st.sidebar.header("Report Options")
-report_type = st.sidebar.selectbox("Select Report Frequency", ["Weekly", "Monthly", "Quarterly", "Yearly"])
 
-# أوصاف أنواع التحليل
+# 1- اختيار وقت التقرير
+report_type = st.sidebar.selectbox(
+    "Select Report Frequency",
+    ["Weekly", "Monthly", "Quarterly", "Yearly"]
+)
+
+# 2- اختيار نوع التحليل (واحد فقط) مع وصفه
 analysis_descriptions = {
     "Summary": "عرض وصف عام للبيانات مثل المتوسط والانحراف المعياري.",
     "Statistical Measures": "تحليل إحصائي متقدم للقيم مثل التباين والمدى والمتوسط.",
@@ -21,16 +27,14 @@ analysis_descriptions = {
     "KPIs": "عرض مؤشرات الأداء الرئيسية مثل المتوسط والحد الأقصى والأدنى."
 }
 
-# اختيار نوع التحليل (واحد فقط)
 analysis_type = st.sidebar.selectbox(
     "Select Type of Analysis",
-    ["Summary", "Statistical Measures", "Trends", "Gaps", "KPIs"]
+    list(analysis_descriptions.keys())
 )
 
-# عرض وصف نوع التحليل
 st.sidebar.markdown(f"**About this analysis:** {analysis_descriptions[analysis_type]}")
 
-# تحديد الرسم البياني الافتراضي حسب نوع التحليل
+# 3- اختيار الرسم البياني الافتراضي حسب نوع التحليل
 default_chart_map = {
     "Summary": "Box",
     "Statistical Measures": "Histogram",
@@ -38,9 +42,9 @@ default_chart_map = {
     "Gaps": "Bar",
     "KPIs": "Bar"
 }
+
 recommended_chart = default_chart_map.get(analysis_type, "Line")
 
-# اختيار نوع الرسم البياني مع تعيين الافتراضي حسب نوع التحليل
 chart_type = st.sidebar.selectbox(
     "Select Chart Type",
     ["Bar", "Line", "Box", "Histogram", "Pie"],
@@ -49,7 +53,8 @@ chart_type = st.sidebar.selectbox(
 
 st.sidebar.caption(f"**Recommended chart for {analysis_type}:** {recommended_chart}")
 
-# رفع الملف
+# --- Main Area ---
+
 uploaded_file = st.file_uploader("Upload your health data file (CSV or Excel)", type=["csv", "xlsx"])
 
 def generate_suggestions(df, analysis_type, columns):
@@ -84,6 +89,7 @@ def generate_suggestions(df, analysis_type, columns):
 
 if uploaded_file:
     try:
+        # قراءة الملف حسب الامتداد
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
@@ -114,8 +120,7 @@ if uploaded_file:
 
         elif analysis_type == "Trends":
             st.subheader("Trend Visualization")
-
-            time_col = st.selectbox("Select time column", df.columns)
+            time_col = st.selectbox("Select time-related column", df.columns)
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
             value_col = st.selectbox("Select value column", numeric_cols)
 
@@ -173,7 +178,7 @@ if uploaded_file:
         title = st.text_input("Chart Title", "Custom Chart")
         color = st.color_picker("Chart Color", "#69b3a2")
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(8,4))
 
         if chart_type == "Bar":
             ax.bar(df[x_col], df[y_col], color=color)
@@ -190,8 +195,8 @@ if uploaded_file:
         ax.set_title(title)
         st.pyplot(fig)
 
-        # عرض الاقتراحات الذكية بعد التحليل
-        if analysis_type != "Trends":  # لأن اقتراحات Trends تظهر ضمن القسم الخاص به
+        # عرض الاقتراحات الذكية بعد التحليل (إذا لم تكن Trends لأنه عرضت فوق)
+        if analysis_type != "Trends":
             st.subheader("Smart Suggestions / Recommendations")
             suggestions = generate_suggestions(df, analysis_type, columns)
             for sug in suggestions:
