@@ -8,11 +8,11 @@ import plotly.express as px
 st.set_page_config(page_title="Health Data Analyzer", layout="wide")
 st.title("Health Data Analyzer")
 
-# ========== Sidebar - خيارات التقرير ==========
+# Sidebar - اختيار وقت التقرير
 st.sidebar.header("Report Options")
-report_type = st.sidebar.selectbox("Select Report Type", ["Weekly", "Monthly", "Quarterly", "Yearly"])
+report_type = st.sidebar.selectbox("Select Report Frequency", ["Weekly", "Monthly", "Quarterly", "Yearly"])
 
-# أوصاف التحليل
+# أوصاف أنواع التحليل
 analysis_descriptions = {
     "Summary": "عرض وصف عام للبيانات مثل المتوسط والانحراف المعياري.",
     "Statistical Measures": "تحليل إحصائي متقدم للقيم مثل التباين والمدى والمتوسط.",
@@ -21,18 +21,16 @@ analysis_descriptions = {
     "KPIs": "عرض مؤشرات الأداء الرئيسية مثل المتوسط والحد الأقصى والأدنى."
 }
 
-# اختيار نوع التحليل
-analysis_type = st.sidebar.multiselect(
+# اختيار نوع التحليل (واحد فقط)
+analysis_type = st.sidebar.selectbox(
     "Select Type of Analysis",
     ["Summary", "Statistical Measures", "Trends", "Gaps", "KPIs"]
 )
 
-# عرض وصف التحليل الأول
-if analysis_type:
-    selected = analysis_type[0]
-    st.sidebar.markdown(f"**About this analysis:** {analysis_descriptions[selected]}")
+# عرض وصف نوع التحليل
+st.sidebar.markdown(f"**About this analysis:** {analysis_descriptions[analysis_type]}")
 
-# اقتراح الرسم البياني حسب نوع التحليل
+# تحديد الرسم البياني الافتراضي حسب نوع التحليل
 default_chart_map = {
     "Summary": "Box",
     "Statistical Measures": "Histogram",
@@ -40,18 +38,49 @@ default_chart_map = {
     "Gaps": "Bar",
     "KPIs": "Bar"
 }
-default_analysis = analysis_type[0] if analysis_type else "Summary"
-recommended_chart = default_chart_map.get(default_analysis, "Line")
+recommended_chart = default_chart_map.get(analysis_type, "Line")
 
+# اختيار نوع الرسم البياني مع تعيين الافتراضي حسب نوع التحليل
 chart_type = st.sidebar.selectbox(
     "Select Chart Type",
     ["Bar", "Line", "Box", "Histogram", "Pie"],
     index=["Bar", "Line", "Box", "Histogram", "Pie"].index(recommended_chart)
 )
-st.sidebar.caption(f"**Recommended chart for {default_analysis}:** {recommended_chart}")
 
-# ========== رفع الملف ==========
+st.sidebar.caption(f"**Recommended chart for {analysis_type}:** {recommended_chart}")
+
+# رفع الملف
 uploaded_file = st.file_uploader("Upload your health data file (CSV or Excel)", type=["csv", "xlsx"])
+
+def generate_suggestions(df, analysis_type, columns):
+    suggestions = []
+
+    if analysis_type in ["Summary", "Statistical Measures"]:
+        for col in columns:
+            mean = df[col].mean()
+            std = df[col].std()
+            if pd.isnull(mean) or pd.isnull(std):
+                continue
+            if std > mean * 0.5:
+                suggestions.append(f"العمود '{col}' لديه تشتت عالي. قد تحتاج إلى تنظيف البيانات أو التحقق من القيم الشاذة.")
+            else:
+                suggestions.append(f"العمود '{col}' بياناته مستقرة نسبيًا.")
+
+    elif analysis_type == "Trends":
+        suggestions.append("تحقق من الاتجاهات الموسمية أو التغيرات المفاجئة في البيانات خلال فترة التقرير.")
+
+    elif analysis_type == "Gaps":
+        missing = df[columns].isnull().sum()
+        for col in columns:
+            if missing[col] > 0:
+                suggestions.append(f"يوجد {missing[col]} قيمة مفقودة في '{col}'. يفضل التعامل معها (مثل التعبئة أو الحذف).")
+            else:
+                suggestions.append(f"العمود '{col}' لا يحتوي على قيم مفقودة.")
+
+    elif analysis_type == "KPIs":
+        suggestions.append("راجع مؤشرات الأداء بانتظام وحاول تحسين القيم الدنيا والقصوى حسب الهدف.")
+
+    return suggestions
 
 if uploaded_file:
     try:
@@ -65,13 +94,11 @@ if uploaded_file:
 
         columns = st.multiselect("Select columns for analysis", df.columns.tolist(), default=df.columns.tolist())
 
-        # ========== Summary ==========
-        if "Summary" in analysis_type:
+        if analysis_type == "Summary":
             st.subheader("Summary Statistics")
             st.write(df[columns].describe())
 
-        # ========== Statistical Measures ==========
-        if "Statistical Measures" in analysis_type:
+        elif analysis_type == "Statistical Measures":
             st.subheader("Statistical Measures")
             stats_df = pd.DataFrame({
                 "Mean": df[columns].mean(),
@@ -85,12 +112,12 @@ if uploaded_file:
             })
             st.dataframe(stats_df)
 
-        # ========== Trends ==========
-        if "Trends" in analysis_type:
+        elif analysis_type == "Trends":
             st.subheader("Trend Visualization")
 
             time_col = st.selectbox("Select time column", df.columns)
-            value_col = st.selectbox("Select value column", df.select_dtypes(include=np.number).columns.tolist())
+            numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+            value_col = st.selectbox("Select value column", numeric_cols)
 
             df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
             df = df.dropna(subset=[time_col, value_col])
@@ -106,8 +133,6 @@ if uploaded_file:
             trend_df = df.groupby(pd.Grouper(key=time_col, freq=freq))[value_col].mean().reset_index()
             trend_df = trend_df.sort_values(by=time_col)
 
-            st.session_state["trend"] = trend_df  # حفظ مؤقت
-
             fig = px.line(
                 trend_df,
                 x=time_col,
@@ -117,10 +142,9 @@ if uploaded_file:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # اقتراحات ذكية
-            st.subheader("Smart Suggestions (Trends)")
+            # اقتراحات ذكية للاتجاهات
             trend_values = trend_df[value_col].values
-
+            st.subheader("Smart Suggestions (Trends)")
             if len(trend_values) > 2:
                 if all(x < y for x, y in zip(trend_values, trend_values[1:])):
                     st.success(f"{value_col} is steadily increasing.")
@@ -131,23 +155,21 @@ if uploaded_file:
             else:
                 st.info("Not enough data points to determine trend.")
 
-        # ========== KPIs ==========
-        if "KPIs" in analysis_type:
+        elif analysis_type == "KPIs":
             st.subheader("Key Performance Indicators")
             kpi_col = st.selectbox("Select column for KPI visualization", columns)
             st.metric(label=f"Mean of {kpi_col}", value=round(df[kpi_col].mean(), 2))
             st.metric(label=f"Max of {kpi_col}", value=round(df[kpi_col].max(), 2))
             st.metric(label=f"Min of {kpi_col}", value=round(df[kpi_col].min(), 2))
 
-        # ========== Gaps ==========
-        if "Gaps" in analysis_type:
+        elif analysis_type == "Gaps":
             st.subheader("Missing Values and Gaps")
             st.write(df[columns].isnull().sum())
 
-        # ========== رسم مخصص ==========
+        # رسم بياني مخصص
         st.subheader("Custom Chart")
-        x_col = st.selectbox("X-axis", columns)
-        y_col = st.selectbox("Y-axis", columns)
+        x_col = st.selectbox("X-axis", columns, key="xcol")
+        y_col = st.selectbox("Y-axis", columns, key="ycol")
         title = st.text_input("Chart Title", "Custom Chart")
         color = st.color_picker("Chart Color", "#69b3a2")
 
@@ -168,7 +190,15 @@ if uploaded_file:
         ax.set_title(title)
         st.pyplot(fig)
 
+        # عرض الاقتراحات الذكية بعد التحليل
+        if analysis_type != "Trends":  # لأن اقتراحات Trends تظهر ضمن القسم الخاص به
+            st.subheader("Smart Suggestions / Recommendations")
+            suggestions = generate_suggestions(df, analysis_type, columns)
+            for sug in suggestions:
+                st.info(sug)
+
     except Exception as e:
         st.error(f"Error processing file: {e}")
+
 else:
     st.info("Please upload a CSV or Excel file to get started.")
